@@ -25,7 +25,7 @@ jobs:
       with:
         fetch-depth: 0
 
-    # 第二步：【顺序调整】在启用缓存前，检查并自动生成 requirements.txt
+    # 第二步：在启用缓存前，检查并自动生成 requirements.txt
     - name: 检查并生成依赖文件
       run: |
         if [ ! -f requirements.txt ]; then
@@ -62,10 +62,10 @@ jobs:
         git config --local user.name "GitHub Actions"
         
         # 核心容错优化：在提交前先拉取远端最新代码并变基
-        # 防止您白天在 GitHub 网页上手动编辑了文件，导致晚上的自动推送报错
-        当前分支=$(git branch --show-current)
-        if [ -n "$当前分支" ]; then
-          git pull --rebase origin "$当前分支" || echo "同步远端代码失败，将尝试继续执行"
+        # 将中文变量名改为英文字符，解决 command not found 报错
+        CURRENT_BRANCH=$(git branch --show-current)
+        if [ -n "$CURRENT_BRANCH" ]; then
+          git pull --rebase origin "$CURRENT_BRANCH" || echo "同步远端代码失败，将尝试继续执行"
         fi
         
         # 将可能发生变化或新生成的文件加入暂存区（如果文件不存在则忽略报错）
