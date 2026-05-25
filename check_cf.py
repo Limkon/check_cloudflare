@@ -3,16 +3,16 @@ import concurrent.futures
 import csv
 import os
 
-# 读取域名列表的文件路径 (请确保你的仓库中有这个文件，每行一个域名)
+# 配置文件路径及参数
 输入文件 = 'domains.txt'
-# 保存检测结果的文件路径
 输出文件 = 'result.csv'
+进度文件 = 'progress.txt'
+每次检测数量 = 2000
 
 def 检测_cloudflare(域名):
     """
     检测单个域名是否使用了 Cloudflare CDN
     """
-    域名 = 域名.strip()
     if not 域名:
         return None
 
@@ -23,18 +23,13 @@ def 检测_cloudflare(域名):
         测试链接 = 域名
 
     try:
-        # 加上常见的请求头，防止被部分网站的安全策略直接拦截
         请求头 = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        # 使用 timeout 防止遇到死链时脚本无限期卡死
         响应 = requests.get(测试链接, headers=请求头, timeout=10, allow_redirects=True)
         响应头 = 响应.headers
-
-        # 将所有的响应头键转换为小写，方便统一匹配
         响应头小写 = {k.lower(): v for k, v in 响应头.items()}
 
-        # 核心检测逻辑：检查 Server 字段和 CF-RAY 字段
         使用了_cf = "否"
         if 'server' in 响应头小写 and 'cloudflare' in 响应头小写['server'].lower():
             使用了_cf = "是"
@@ -46,7 +41,28 @@ def 检测_cloudflare(域名):
 
     except requests.exceptions.RequestException as 错误:
         print(f"检测失败: {域名} -> 无法连接或超时")
-        return [域名, "未知", "无", f"请求失败"]
+        return [域名, "未知", "无", "请求失败"]
+
+def 获取当前进度():
+    """
+    从进度文件中读取上次检测到的行数
+    """
+    if os.path.exists(进度文件):
+        with open(进度文件, 'r', encoding='utf-8') as 文件:
+            try:
+                内容 = 文件.read().strip()
+                if 内容:
+                    return int(内容)
+            except ValueError:
+                return 0
+    return 0
+
+def 保存当前进度(新进度):
+    """
+    将新的进度行数写入进度文件
+    """
+    with open(进度文件, 'w', encoding='utf-8') as 文件:
+        文件.write(str(新进度))
 
 def 主程序():
     # 检查存放域名的输入文件是否存在
@@ -54,27 +70,46 @@ def 主程序():
         print(f"错误：找不到输入文件 {输入文件}，请确保文件存在。")
         return
 
-    # 读取域名列表
+    # 读取全部域名列表，并过滤掉空行
     with open(输入文件, 'r', encoding='utf-8') as 文件:
-        域名列表 = 文件.readlines()
+        所有行 = 文件.readlines()
+        域名列表 = [行.strip() for 行 in 所有行 if 行.strip()]
+
+    总数量 = len(域名列表)
+    当前起始位置 = 获取当前进度()
+
+    if 当前起始位置 >= 总数量:
+        print(f"进度显示已检测 {当前起始位置} 个。所有域名已经全部检测完毕，无需再次运行。")
+        return
+
+    # 计算本次要检测的范围
+    当前结束位置 = min(当前起始位置 + 每次检测数量, 总数量)
+    待检测列表 = 域名列表[当前起始位置:当前结束位置]
+
+    print(f"总计 {总数量} 个网址。")
+    print(f"本次运行从第 {当前起始位置 + 1} 个开始，检测到第 {当前结束位置} 个，共计 {len(待检测列表)} 个。")
 
     结果列表 = []
     
-    # 使用线程池并发检测，显著提高批量检测的速度。这里设置最大线程数为 10
-    print(f"开始批量检测，共计 {len(域名列表)} 个网址...")
+    # 并发检测
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as 执行器:
-        # 执行器会并发处理，并将结果收集起来
-        for 结果 in 执行器.map(检测_cloudflare, 域名列表):
+        for 结果 in 执行器.map(检测_cloudflare, 待检测列表):
             if 结果:
                 结果列表.append(结果)
 
-    # 将最终结果保存到 CSV 文件中 (使用 utf-8-sig 防止在 Windows Excel 中打开乱码)
-    with open(输出文件, 'w', newline='', encoding='utf-8-sig') as 结果文件:
+    # 写入结果：如果是从第0个开始，则覆盖写入并添加表头；否则使用追加模式 'a'
+    写入模式 = 'w' if 当前起始位置 == 0 else 'a'
+    with open(输出文件, 写入模式, newline='', encoding='utf-8-sig') as 结果文件:
         写入器 = csv.writer(结果文件)
-        写入器.writerow(['域名', '是否使用Cloudflare', 'HTTP状态码', '备注信息'])
+        # 只有在第一次运行（写入模式为'w'）时才写入表头
+        if 写入模式 == 'w':
+            写入器.writerow(['域名', '是否使用Cloudflare', 'HTTP状态码', '备注信息'])
         写入器.writerows(结果列表)
         
-    print(f"所有网站检测已完成，结果已成功保存至 {输出文件}")
+    # 保存新的进度
+    保存当前进度(当前结束位置)
+    print(f"本次 {len(待检测列表)} 个网站检测已完成。")
+    print(f"结果已成功追加至 {输出文件}，进度文件已更新为 {当前结束位置}。")
 
 if __name__ == "__main__":
     主程序()
