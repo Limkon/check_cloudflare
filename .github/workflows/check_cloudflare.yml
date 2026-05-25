@@ -25,14 +25,7 @@ jobs:
       with:
         fetch-depth: 0
 
-    # 第二步：设置 Python 环境并启用原生依赖缓存 (核心提速优化)
-    - name: 设置 Python 环境并启用缓存
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-        cache: 'pip' # 自动缓存 pip 下载的依赖包，后续运行无需重复下载
-
-    # 第三步：检查并自动生成 requirements.txt
+    # 第二步：【顺序调整】在启用缓存前，检查并自动生成 requirements.txt
     - name: 检查并生成依赖文件
       run: |
         if [ ! -f requirements.txt ]; then
@@ -42,6 +35,13 @@ jobs:
         else
           echo "requirements.txt 已存在。"
         fi
+
+    # 第三步：设置 Python 环境并启用原生依赖缓存 (此时已有 requirements.txt 供其读取)
+    - name: 设置 Python 环境并启用缓存
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip' # 自动缓存 pip 下载的依赖包，后续运行无需重复下载
 
     # 第四步：安装 Python 脚本所需的依赖库
     - name: 安装项目依赖
@@ -72,6 +72,7 @@ jobs:
         if [ -f result.csv ]; then git add result.csv; fi
         if [ -f progress.txt ]; then git add progress.txt; fi
         if [ -f domains.txt ]; then git add domains.txt; fi
+        if [ -f requirements.txt ]; then git add requirements.txt; fi
         
         # 判断是否有内容更新，防止没有变化时提交报错
         if ! git diff --cached --quiet; then
