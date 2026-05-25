@@ -139,7 +139,8 @@ def 主程序():
     # 并发检测
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as 执行器:
         for 结果 in 执行器.map(检测_cloudflare, 待检测列表):
-            if 结果:
+            # 核心修改：只有当检测结果明确为“是”时，才将其加入到准备保存的结果列表中
+            if 结果 and 结果[1] == "是":
                 结果列表.append(结果)
 
     # 写入结果：如果是从第0个开始，则覆盖写入并添加表头；否则追加写入
@@ -148,11 +149,14 @@ def 主程序():
         写入器 = csv.writer(结果文件)
         if 写入模式 == 'w':
             写入器.writerow(['域名', '是否使用Cloudflare', 'HTTP状态码', '备注信息'])
-        写入器.writerows(结果列表)
+        
+        # 如果本次 2000 个检测中有命中 Cloudflare 的网站，才执行写入操作
+        if 结果列表:
+            写入器.writerows(结果列表)
         
     # 保存新的进度
     保存当前进度(当前结束位置)
-    print(f"本次 {len(待检测列表)} 个网站检测已完成。")
+    print(f"本次 {len(待检测列表)} 个网站检测已完成。发现 {len(结果列表)} 个使用 Cloudflare 的网站。")
     print(f"结果已成功追加至 {输出文件}，进度文件已更新为 {当前结束位置}。")
 
 if __name__ == "__main__":
