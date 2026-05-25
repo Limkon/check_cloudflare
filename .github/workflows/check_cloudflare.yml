@@ -1,0 +1,73 @@
+name: 批量检测网站是否使用Cloudflare
+
+# 触发条件配置
+on:
+  # 支持手动在 GitHub 页面上点击按钮触发运行
+  workflow_dispatch:
+  
+  # 定时触发配置（每小时运行一次）
+  schedule:
+    - cron: '0 * * * *'
+
+# 给予工作流对仓库的写入权限，这样它才能把检测结果推送保存到仓库中
+permissions:
+  contents: write
+
+jobs:
+  run-detection:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 第一步：下载仓库中的代码到运行服务器
+    - name: 检出仓库代码
+      uses: actions/checkout@v4
+
+    # 第二步：安装并配置 Python 环境
+    - name: 设置 Python 环境
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    # 第三步：检查并自动生成 requirements.txt
+    - name: 检查并生成依赖文件
+      run: |
+        if [ ! -f requirements.txt ]; then
+          echo "未检测到 requirements.txt，正在自动生成..."
+          echo "requests==2.31.0" > requirements.txt
+        else
+          echo "requirements.txt 已存在。"
+        fi
+
+    # 第四步：安装 Python 脚本所需的依赖库
+    - name: 安装项目依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # 第五步：执行 Python 检测脚本
+    - name: 运行检测脚本
+      run: |
+        python check_cf.py
+
+    # 第六步：将生成的检测结果自动提交并推送到 GitHub 仓库中
+    - name: 提交并推送结果到仓库
+      run: |
+        # 配置 Git 提交者的身份信息
+        git config --local user.email "actions@github.com"
+        git config --local user.name "GitHub Actions"
+        
+        # 检查 result.csv 是否有发生变化或新生成
+        if [ -f result.csv ]; then
+          git add result.csv
+          
+          # 判断是否有内容更新，防止没有变化时提交报错
+          if ! git diff --cached --quiet; then
+            git commit -m "自动更新: 网站 Cloudflare CDN 检测结果 [工作流自动提交]"
+            git push
+            echo "结果已成功更新并推送到仓库。"
+          else
+            echo "检测结果没有发生变化，无需提交。"
+          fi
+        else
+          echo "未找到结果文件 result.csv，跳过提交。"
+        fi
