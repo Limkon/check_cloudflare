@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
   
   # 定时触发配置
-  # 根据你的要求，设置为每天只跑一次。这里的 0 16 * * * 表示每天 UTC 时间 16 点（即北京时间每天凌晨 0 点）运行
+  # 设置为每天只跑一次。这里的 0 16 * * * 表示每天 UTC 时间 16 点（即北京时间每天凌晨 0 点）运行
   schedule:
     - cron: '0 16 * * *'
 
-# 给予工作流对仓库的写入权限，用于保存结果和进度
+# 给予工作流对仓库的写入权限，用于保存结果、进度和域名名单
 permissions:
   contents: write
 
@@ -50,22 +50,23 @@ jobs:
       run: |
         python check_cf.py
 
-    # 第六步：将生成的检测结果和进度记录自动提交并推送到 GitHub 仓库
+    # 第六步：将生成的检测结果、进度记录和域名名单自动提交并推送到 GitHub 仓库
     - name: 提交并推送结果到仓库
       run: |
         # 配置 Git 提交者的身份信息
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions"
         
-        # 将可能发生变化的文件加入暂存区（如果文件不存在则忽略报错）
+        # 将可能发生变化或新生成的文件加入暂存区（如果文件不存在则忽略报错）
         if [ -f result.csv ]; then git add result.csv; fi
         if [ -f progress.txt ]; then git add progress.txt; fi
+        if [ -f domains.txt ]; then git add domains.txt; fi
         
         # 判断是否有内容更新，防止没有变化时提交报错
         if ! git diff --cached --quiet; then
-          git commit -m "自动更新: 追加检测结果并保存进度 [工作流自动提交]"
+          git commit -m "自动更新: 追加检测结果, 更新进度与域名名单 [工作流自动提交]"
           git push
-          echo "结果和进度已成功更新并推送到仓库。"
+          echo "结果、进度和域名名单已成功更新并推送到仓库。"
         else
           echo "检测结果和进度没有发生变化，无需提交。"
         fi
