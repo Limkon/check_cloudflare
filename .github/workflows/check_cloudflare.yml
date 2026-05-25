@@ -1,4 +1,4 @@
-name: 批量检测网站是否使用Cloudflare (断点续传版)
+name: 批量检测网站是否使用Cloudflare (断点续传与防冲突版)
 
 # 触发条件配置
 on:
@@ -19,21 +19,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 第一步：下载仓库中的代码到运行服务器
+    # 第一步：下载仓库代码，使用 fetch-depth: 0 获取完整历史，为后续防冲突合并做准备
     - name: 检出仓库代码
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-    # 第二步：安装并配置 Python 环境
-    - name: 设置 Python 环境
+    # 第二步：设置 Python 环境并启用原生依赖缓存 (核心提速优化)
+    - name: 设置 Python 环境并启用缓存
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
+        cache: 'pip' # 自动缓存 pip 下载的依赖包，后续运行无需重复下载
 
     # 第三步：检查并自动生成 requirements.txt
     - name: 检查并生成依赖文件
       run: |
         if [ ! -f requirements.txt ]; then
           echo "未检测到 requirements.txt，正在自动生成..."
+          # requests 会自带 urllib3，因此直接声明 requests 即可
           echo "requests==2.31.0" > requirements.txt
         else
           echo "requirements.txt 已存在。"
@@ -50,12 +54,19 @@ jobs:
       run: |
         python check_cf.py
 
-    # 第六步：将生成的检测结果、进度记录和域名名单自动提交并推送到 GitHub 仓库
-    - name: 提交并推送结果到仓库
+    # 第六步：将结果提交并推送，包含防冲突处理
+    - name: 提交并推送结果到仓库 (防冲突处理)
       run: |
         # 配置 Git 提交者的身份信息
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions"
+        
+        # 核心容错优化：在提交前先拉取远端最新代码并变基
+        # 防止您白天在 GitHub 网页上手动编辑了文件，导致晚上的自动推送报错
+        当前分支=$(git branch --show-current)
+        if [ -n "$当前分支" ]; then
+          git pull --rebase origin "$当前分支" || echo "同步远端代码失败，将尝试继续执行"
+        fi
         
         # 将可能发生变化或新生成的文件加入暂存区（如果文件不存在则忽略报错）
         if [ -f result.csv ]; then git add result.csv; fi
